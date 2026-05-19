@@ -82,6 +82,7 @@
 
     textarea,
     input[type="text"],
+    input[type="password"],
     input[type="file"] {
       width: 100%;
       border: 1px solid var(--border);
@@ -93,7 +94,8 @@
     }
 
     textarea,
-    input[type="text"] {
+    input[type="text"],
+    input[type="password"] {
       padding: 11px 12px;
     }
 
@@ -104,6 +106,7 @@
 
     textarea:focus,
     input[type="text"]:focus,
+    input[type="password"]:focus,
     input[type="file"]:focus {
       outline: none;
       border-color: var(--accent);
@@ -290,11 +293,21 @@
         <input id="promptFile" type="file" accept=".txt,.csv,text/plain,text/csv">
       </label>
 
+      <label for="apiUrl">
+        API URL
+        <input id="apiUrl" type="text" value="http://localhost:1234/v1/chat/completions" autocomplete="off">
+      </label>
+
+      <label for="apiKey">
+        API Key
+        <input id="apiKey" type="password" autocomplete="off">
+      </label>
+
       <label for="modelName">
         Model name
         <span class="hint">Use the exact model id shown by LM Studio.</span>
         <div class="model-row">
-          <input id="modelName" type="text" value="qwen3.5-0.8b" list="modelOptions" autocomplete="off">
+          <input id="modelName" type="text" value="qwen3.5-0.8b" placeholder="qwen3.5-0.8b (LM Studio), gemini-2.5-flash (Google AI Studio), meta-llama/llama-3.3-70b-instruct:free (OpenRouter)" list="modelOptions" autocomplete="off">
           <button id="refreshModelsButton" class="secondary-button" type="button">Find models</button>
         </div>
         <datalist id="modelOptions"></datalist>
@@ -311,11 +324,11 @@
   </main>
 
   <script>
-    const API_URL = "http://localhost:1234/v1/chat/completions";
-
     const form = document.getElementById("batchForm");
     const systemPrompt = document.getElementById("systemPrompt");
     const promptFile = document.getElementById("promptFile");
+    const apiUrl = document.getElementById("apiUrl");
+    const apiKey = document.getElementById("apiKey");
     const modelName = document.getElementById("modelName");
     const modelOptions = document.getElementById("modelOptions");
     const runButton = document.getElementById("runButton");
@@ -336,6 +349,14 @@
       }
 
       const model = modelName.value.trim();
+      const url = apiUrl.value.trim();
+      const key = apiKey.value.trim();
+
+      if (!url) {
+        setStatus("Enter an API URL.", "error");
+        return;
+      }
+
       if (!model) {
         setStatus("Enter a model name.", "error");
         return;
@@ -359,7 +380,7 @@
           return;
         }
 
-        await runBatch(prompts, model, systemPrompt.value);
+        await runBatch(prompts, model, systemPrompt.value, url, key);
       } catch (error) {
         setStatus(error.message || String(error), "error");
       } finally {
@@ -395,7 +416,7 @@
       });
     }
 
-    async function runBatch(prompts, model, systemContent) {
+    async function runBatch(prompts, model, systemContent, url, key) {
       for (let index = 0; index < prompts.length; index += 1) {
         const rowNumber = index + 1;
         const input = prompts[index];
@@ -403,7 +424,7 @@
 
         let response;
         try {
-          response = await callLmStudio(model, systemContent, input);
+          response = await callLmStudio(model, systemContent, input, url, key);
         } catch (error) {
           response = `Error: ${error.message || String(error)}`;
         }
@@ -418,18 +439,24 @@
       downloadButton.style.display = "inline-block";
     }
 
-    async function callLmStudio(model, systemContent, input) {
+    async function callLmStudio(model, systemContent, input, url, key) {
       const messages = [];
       if (systemContent.trim()) {
         messages.push({ role: "system", content: systemContent });
       }
       messages.push({ role: "user", content: input });
 
-      const response = await fetch(API_URL, {
+      const headers = {
+        "Content-Type": "application/json"
+      };
+
+      if (key) {
+        headers.Authorization = `Bearer ${key}`;
+      }
+
+      const response = await fetch(url, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
+        headers,
         body: JSON.stringify({
           model,
           messages,
