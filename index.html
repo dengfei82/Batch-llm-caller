@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LLM batch caller</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #0b4fb3;
+      --panel: #ffffff;
+      --panel-soft: #f0f7ff;
+      --text: #10213d;
+      --muted: #5b6c86;
+      --border: #b9d4f4;
+      --accent: #facc15;
+      --accent-hover: #eab308;
+      --accent-soft: #fef3c7;
+      --blue: #0b4fb3;
+      --blue-dark: #07357f;
+      --blue-soft: #dbeafe;
+      --danger: #b42318;
+      --success: #067647;
+      --shadow: 0 26px 80px rgba(3, 22, 57, 0.32);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        linear-gradient(135deg, #07357f 0%, #0b4fb3 45%, #1d75d8 100%),
+        var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      line-height: 1.5;
+    }
+
+    main {
+      width: min(100% - 32px, 720px);
+      margin: 48px auto;
+      padding: 32px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+
+    h1 {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      margin: 0 0 30px;
+      font-size: 34px;
+      line-height: 1.15;
+      letter-spacing: 0;
+    }
+
+    h1::before {
+      content: "";
+      width: 14px;
+      height: 38px;
+      border-radius: 999px;
+      background: linear-gradient(180deg, #fde047, #f59e0b);
+      box-shadow: 0 10px 24px rgba(250, 204, 21, 0.36);
+    }
+
+    form {
+      display: grid;
+      gap: 22px;
+    }
+
+    label {
+      display: grid;
+      gap: 8px;
+      font-weight: 650;
+      color: #263247;
+    }
+
+    textarea,
+    input[type="text"],
+    input[type="file"] {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--panel-soft);
+      color: var(--text);
+      font: inherit;
+      transition: border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
+    }
+
+    textarea,
+    input[type="text"] {
+      padding: 11px 12px;
+    }
+
+    textarea {
+      min-height: 140px;
+      resize: vertical;
+    }
+
+    textarea:focus,
+    input[type="text"]:focus,
+    input[type="file"]:focus {
+      outline: none;
+      border-color: var(--accent);
+      background: #ffffff;
+      box-shadow: 0 0 0 4px rgba(250, 204, 21, 0.22);
+    }
+
+    input[type="file"] {
+      padding: 10px;
+    }
+
+    .model-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .hint {
+      color: var(--muted);
+      font-size: 14px;
+      font-weight: 400;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+    }
+
+    button {
+      border: 0;
+      border-radius: 6px;
+      padding: 11px 18px;
+      background: var(--accent);
+      color: #1f2a44;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 12px 24px rgba(250, 204, 21, 0.28);
+      transition: transform 160ms ease, background-color 160ms ease, box-shadow 160ms ease;
+    }
+
+    .secondary-button {
+      background: var(--blue-dark);
+      color: #ffffff;
+      box-shadow: 0 12px 24px rgba(7, 53, 127, 0.22);
+      white-space: nowrap;
+    }
+
+    button:hover:not(:disabled) {
+      background: var(--accent-hover);
+      box-shadow: 0 16px 28px rgba(250, 204, 21, 0.34);
+      transform: translateY(-1px);
+    }
+
+    .secondary-button:hover:not(:disabled) {
+      background: var(--blue);
+      box-shadow: 0 16px 28px rgba(7, 53, 127, 0.28);
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.62;
+    }
+
+    #downloadButton {
+      display: none;
+      background: linear-gradient(135deg, #fde047, #f59e0b);
+      box-shadow: 0 12px 24px rgba(250, 204, 21, 0.28);
+    }
+
+    #status {
+      margin-top: 24px;
+      padding: 14px 16px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: linear-gradient(135deg, #ffffff, var(--blue-soft));
+      color: var(--blue-dark);
+      min-height: 54px;
+      white-space: pre-wrap;
+    }
+
+    #status.error {
+      border-color: #f3b8b2;
+      background: #fff4f2;
+      color: var(--danger);
+    }
+
+    #status.success {
+      border-color: #abefc6;
+      background: #f6fef9;
+      color: var(--success);
+    }
+
+    #results {
+      margin-top: 24px;
+      display: grid;
+      gap: 14px;
+    }
+
+    .result {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      background: #ffffff;
+      box-shadow: 0 12px 28px rgba(24, 32, 51, 0.07);
+    }
+
+    .result-header {
+      padding: 10px 14px;
+      background: linear-gradient(135deg, var(--blue-soft), var(--accent-soft));
+      color: var(--blue-dark);
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .result-body {
+      display: grid;
+      gap: 0;
+    }
+
+    .field {
+      padding: 14px;
+    }
+
+    .field + .field {
+      border-top: 1px solid var(--border);
+    }
+
+    .field-title {
+      margin-bottom: 6px;
+      color: var(--blue);
+      font-size: 13px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .field-text {
+      margin: 0;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    @media (max-width: 560px) {
+      main {
+        width: 100%;
+        min-height: 100vh;
+        margin: 0;
+        padding: 24px 18px;
+        border: 0;
+        border-radius: 0;
+      }
+
+      h1 {
+        font-size: 28px;
+      }
+
+      button {
+        width: 100%;
+      }
+
+      .model-row {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>LLM batch caller</h1>
+
+    <form id="batchForm">
+      <label for="systemPrompt">
+        System prompt
+        <textarea id="systemPrompt" placeholder="Paste the system prompt here"></textarea>
+      </label>
+
+      <label for="promptFile">
+        Prompt file
+        <span class="hint">Choose a .txt or .csv file with one prompt per line.</span>
+        <input id="promptFile" type="file" accept=".txt,.csv,text/plain,text/csv">
+      </label>
+
+      <label for="modelName">
+        Model name
+        <span class="hint">Use the exact model id shown by LM Studio.</span>
+        <div class="model-row">
+          <input id="modelName" type="text" value="qwen3.5-0.8b" list="modelOptions" autocomplete="off">
+          <button id="refreshModelsButton" class="secondary-button" type="button">Find models</button>
+        </div>
+        <datalist id="modelOptions"></datalist>
+      </label>
+
+      <div class="actions">
+        <button id="runButton" type="submit">Run</button>
+        <button id="downloadButton" type="button">Download CSV</button>
+      </div>
+    </form>
+
+    <div id="status" aria-live="polite">Ready.</div>
+    <section id="results" aria-label="Results"></section>
+  </main>
+
+  <script>
+    const API_URL = "http://localhost:1234/v1/chat/completions";
+
+    const form = document.getElementById("batchForm");
+    const systemPrompt = document.getElementById("systemPrompt");
+    const promptFile = document.getElementById("promptFile");
+    const modelName = document.getElementById("modelName");
+    const modelOptions = document.getElementById("modelOptions");
+    const runButton = document.getElementById("runButton");
+    const refreshModelsButton = document.getElementById("refreshModelsButton");
+    const downloadButton = document.getElementById("downloadButton");
+    const statusArea = document.getElementById("status");
+    const resultsArea = document.getElementById("results");
+
+    let results = [];
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+
+      const file = promptFile.files[0];
+      if (!file) {
+        setStatus("Choose a .txt or .csv file first.", "error");
+        return;
+      }
+
+      const model = modelName.value.trim();
+      if (!model) {
+        setStatus("Enter a model name.", "error");
+        return;
+      }
+
+      runButton.disabled = true;
+      downloadButton.style.display = "none";
+      results = [];
+      resultsArea.innerHTML = "";
+      setStatus("Reading file...");
+
+      try {
+        const text = await readFileAsText(file);
+        const prompts = text
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter((line) => line.length > 0);
+
+        if (prompts.length === 0) {
+          setStatus("The selected file does not contain any prompts.", "error");
+          return;
+        }
+
+        await runBatch(prompts, model, systemPrompt.value);
+      } catch (error) {
+        setStatus(error.message || String(error), "error");
+      } finally {
+        runButton.disabled = false;
+      }
+    });
+
+    refreshModelsButton.addEventListener("click", async () => {
+      await refreshModels(true);
+    });
+
+    downloadButton.addEventListener("click", () => {
+      const csv = toCsv(results);
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "results.csv";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    });
+
+    refreshModels(false);
+
+    function readFileAsText(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result || "");
+        reader.onerror = () => reject(new Error("Could not read the selected file."));
+        reader.readAsText(file);
+      });
+    }
+
+    async function runBatch(prompts, model, systemContent) {
+      for (let index = 0; index < prompts.length; index += 1) {
+        const rowNumber = index + 1;
+        const input = prompts[index];
+        setStatus(`Processing ${rowNumber} of ${prompts.length}...`);
+
+        let response;
+        try {
+          response = await callLmStudio(model, systemContent, input);
+        } catch (error) {
+          response = `Error: ${error.message || String(error)}`;
+        }
+
+        const result = { rowNumber, input, response };
+        results.push(result);
+        appendResult(result);
+        setStatus(`Processed ${rowNumber} of ${prompts.length}.`);
+      }
+
+      setStatus(`Done. Processed ${prompts.length} prompt${prompts.length === 1 ? "" : "s"}.`, "success");
+      downloadButton.style.display = "inline-block";
+    }
+
+    async function callLmStudio(model, systemContent, input) {
+      const messages = [];
+      if (systemContent.trim()) {
+        messages.push({ role: "system", content: systemContent });
+      }
+      messages.push({ role: "user", content: input });
+
+      const response = await fetch(API_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model,
+          messages,
+          temperature: 0.7
+        })
+      });
+
+      const responseText = await response.text();
+      let data = null;
+
+      if (responseText) {
+        try {
+          data = JSON.parse(responseText);
+        } catch (error) {
+          throw new Error(`Invalid JSON response: ${responseText}`);
+        }
+      }
+
+      if (!response.ok) {
+        const message = data && data.error && data.error.message
+          ? data.error.message
+          : responseText || `HTTP ${response.status}`;
+        throw new Error(message);
+      }
+
+      const content = data &&
+        data.choices &&
+        data.choices[0] &&
+        data.choices[0].message &&
+        data.choices[0].message.content;
+
+      if (typeof content !== "string") {
+        throw new Error("Response did not include choices[0].message.content.");
+      }
+
+      return content;
+    }
+
+    async function refreshModels(showStatus) {
+      refreshModelsButton.disabled = true;
+      if (showStatus) {
+        setStatus("Finding models from LM Studio...");
+      }
+
+      try {
+        const response = await fetch("http://localhost:1234/v1/models");
+        const responseText = await response.text();
+        let data = null;
+
+        if (responseText) {
+          try {
+            data = JSON.parse(responseText);
+          } catch (error) {
+            throw new Error(`Invalid models response: ${responseText}`);
+          }
+        }
+
+        if (!response.ok) {
+          const message = data && data.error && data.error.message
+            ? data.error.message
+            : responseText || `HTTP ${response.status}`;
+          throw new Error(message);
+        }
+
+        const ids = data && Array.isArray(data.data)
+          ? data.data
+            .map((model) => model && model.id)
+            .filter((id) => typeof id === "string" && id.trim().length > 0)
+          : [];
+
+        modelOptions.innerHTML = "";
+        ids.forEach((id) => {
+          const option = document.createElement("option");
+          option.value = id;
+          modelOptions.appendChild(option);
+        });
+
+        if (ids.length > 0) {
+          if (!ids.includes(modelName.value.trim())) {
+            modelName.value = ids[0];
+          }
+          if (showStatus) {
+            setStatus(`Found ${ids.length} model${ids.length === 1 ? "" : "s"}. Selected: ${modelName.value}`, "success");
+          }
+        } else if (showStatus) {
+          setStatus("LM Studio returned no model names. Type the model id manually.", "error");
+        }
+      } catch (error) {
+        if (showStatus) {
+          setStatus(`Could not find models: ${error.message || String(error)}`, "error");
+        }
+      } finally {
+        refreshModelsButton.disabled = false;
+      }
+    }
+
+    function appendResult(result) {
+      const wrapper = document.createElement("article");
+      wrapper.className = "result";
+
+      const header = document.createElement("div");
+      header.className = "result-header";
+      header.textContent = `Row ${result.rowNumber}`;
+
+      const body = document.createElement("div");
+      body.className = "result-body";
+
+      body.appendChild(createField("Input", result.input));
+      body.appendChild(createField("Response", result.response));
+
+      wrapper.appendChild(header);
+      wrapper.appendChild(body);
+      resultsArea.appendChild(wrapper);
+    }
+
+    function createField(title, text) {
+      const field = document.createElement("div");
+      field.className = "field";
+
+      const fieldTitle = document.createElement("div");
+      fieldTitle.className = "field-title";
+      fieldTitle.textContent = title;
+
+      const fieldText = document.createElement("p");
+      fieldText.className = "field-text";
+      fieldText.textContent = text;
+
+      field.appendChild(fieldTitle);
+      field.appendChild(fieldText);
+      return field;
+    }
+
+    function toCsv(rows) {
+      const header = ["row_number", "input", "response"];
+      const lines = [
+        header.map(escapeCsvField).join(","),
+        ...rows.map((row) => [
+          row.rowNumber,
+          row.input,
+          row.response
+        ].map(escapeCsvField).join(","))
+      ];
+      return lines.join("\r\n");
+    }
+
+    function escapeCsvField(value) {
+      const text = String(value == null ? "" : value);
+      if (/[",\r\n]/.test(text)) {
+        return `"${text.replace(/"/g, '""')}"`;
+      }
+      return text;
+    }
+
+    function setStatus(message, type) {
+      statusArea.textContent = message;
+      statusArea.className = type || "";
+    }
+  </script>
+</body>
+</html>
